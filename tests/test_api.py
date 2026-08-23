@@ -79,6 +79,7 @@ def test_runtime_discloses_capabilities_without_secret_values(monkeypatch) -> No
         "store": "memory",
         "gemini_ready": True,
         "approval_guard": "secret",
+        "brief_guard": "secret",
     }
     assert "private-gemini-key" not in response.text
     assert "private-approval-token" not in response.text

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -13,13 +14,13 @@ from pathlib import Path
 from uuid import uuid4
 
 
-def request_json(base_url: str, path: str, method: str = "GET", payload=None):
+def request_json(base_url: str, path: str, method: str = "GET", payload=None, headers=None):
     body = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}{path}",
         data=body,
         method=method,
-        headers={"content-type": "application/json"},
+        headers={"content-type": "application/json", **(headers or {})},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -81,9 +82,10 @@ def verify(base_url: str, require_gemini: bool, source_commit: str | None):
     check(
         "runtime disclosure",
         status == 200
-        and set(runtime) == {"store", "gemini_ready", "approval_guard"}
+        and set(runtime) == {"store", "gemini_ready", "approval_guard", "brief_guard"}
         and runtime.get("store") in {"memory", "firestore"}
         and runtime.get("approval_guard") in {"demo-only", "secret"}
+        and runtime.get("brief_guard") in {"public-demo", "secret"}
         and (not require_gemini or runtime.get("gemini_ready") is True),
         runtime,
     )
@@ -131,7 +133,11 @@ def verify(base_url: str, require_gemini: bool, source_commit: str | None):
     )
     check("blocked approval", status == 409, {"status": status, "result": blocked_approval})
 
-    status, brief = request_json(base_url, f"/cases/{ready_id}/brief", "POST")
+    brief_token = os.getenv("EVIDENCEOPS_BRIEF_TOKEN")
+    brief_headers = {"x-brief-token": brief_token} if brief_token else {}
+    status, brief = request_json(
+        base_url, f"/cases/{ready_id}/brief", "POST", headers=brief_headers
+    )
     if status == 200:
         brief_passed = (
             brief.get("source_decision") == results["ready"].get("decision")
@@ -139,7 +145,7 @@ def verify(base_url: str, require_gemini: bool, source_commit: str | None):
             and brief.get("model") == "gemini-3.5-flash"
         )
     else:
-        brief_passed = not require_gemini and status == 503
+        brief_passed = not require_gemini and status in {403, 503}
     check("Gemini ADK brief", brief_passed, {"status": status, "result": brief})
 
     return {

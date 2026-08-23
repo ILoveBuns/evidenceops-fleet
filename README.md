@@ -84,16 +84,21 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
 gcloud firestore databases create --location=us-central1
 gcloud run deploy evidenceops-fleet --source . --region us-central1 \
   --allow-unauthenticated --set-env-vars EVIDENCEOPS_STORE=firestore \
-  --set-secrets GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest
+  --set-secrets GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest,EVIDENCEOPS_BRIEF_TOKEN=brief-token:latest
 ```
 
 Use a dedicated service account with only datastore access. Do not place API
 keys, service-account JSON, cookies, or private evidence in the repository.
+Paid Gemini brief calls require `X-Brief-Token`; the dashboard asks for the
+temporary token and does not persist it. For a time-bounded public judging demo,
+`EVIDENCEOPS_PUBLIC_DEMO_BRIEFS=true` explicitly permits only synthetic
+`demo-*` cases. Disable that flag after judging to prevent unbounded model cost.
 
 After deployment, independently replay the public paths before making any cloud
 or model-execution claim:
 
 ```bash
+EVIDENCEOPS_BRIEF_TOKEN='READ_FROM_SECRET_MANAGER' \
 python scripts/verify_public_deployment.py \
   https://YOUR-SERVICE-URL --require-gemini \
   --source-commit "$(git rev-parse HEAD)" --output deployment-receipt.json

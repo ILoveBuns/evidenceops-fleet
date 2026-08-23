@@ -67,13 +67,17 @@ def test_adk_service_extracts_final_response_from_redacted_result(monkeypatch) -
 
 
 def test_brief_endpoint_fails_closed_without_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCEOPS_BRIEF_TOKEN", "test-brief-secret")
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
     result_store = MemoryResultStore()
     result_store.save_once(result())
     app.dependency_overrides[get_store] = lambda: result_store
     try:
-        response = TestClient(app).post("/cases/brief-case-0001/brief")
+        response = TestClient(app).post(
+            "/cases/brief-case-0001/brief",
+            headers={"x-brief-token": "test-brief-secret"},
+        )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 503
@@ -82,15 +86,53 @@ def test_brief_endpoint_fails_closed_without_credentials(monkeypatch) -> None:
 
 def test_brief_endpoint_returns_fake_adk_receipt(monkeypatch) -> None:
     monkeypatch.setenv("GOOGLE_API_KEY", "test-only-key")
+    monkeypatch.setenv("EVIDENCEOPS_BRIEF_TOKEN", "test-brief-secret")
     result_store = MemoryResultStore()
     result_store.save_once(result())
     service = AdkBriefService(runner_factory=FakeRunner)
     app.dependency_overrides[get_store] = lambda: result_store
     app.dependency_overrides[get_brief_service] = lambda: service
     try:
-        response = TestClient(app).post("/cases/brief-case-0001/brief")
+        response = TestClient(app).post(
+            "/cases/brief-case-0001/brief",
+            headers={"x-brief-token": "test-brief-secret"},
+        )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json()["model"] == "gemini-3.5-flash"
     assert response.json()["brief"] == "Keep the case blocked."
+
+
+def test_brief_endpoint_rejects_unauthorized_paid_call(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-only-key")
+    monkeypatch.setenv("EVIDENCEOPS_BRIEF_TOKEN", "test-brief-secret")
+    result_store = MemoryResultStore()
+    result_store.save_once(result())
+    app.dependency_overrides[get_store] = lambda: result_store
+    try:
+        response = TestClient(app).post("/cases/brief-case-0001/brief")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 403
+    assert response.json()["detail"] == "brief authorization required"
+
+
+def test_explicit_public_demo_allows_only_demo_case(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-only-key")
+    monkeypatch.setenv("EVIDENCEOPS_PUBLIC_DEMO_BRIEFS", "true")
+    demo_result = result().model_copy(update={"case_id": "demo-brief-case-0001"})
+    result_store = MemoryResultStore()
+    result_store.save_once(demo_result)
+    result_store.save_once(result())
+    service = AdkBriefService(runner_factory=FakeRunner)
+    app.dependency_overrides[get_store] = lambda: result_store
+    app.dependency_overrides[get_brief_service] = lambda: service
+    try:
+        client = TestClient(app)
+        demo_response = client.post("/cases/demo-brief-case-0001/brief")
+        real_response = client.post("/cases/brief-case-0001/brief")
+    finally:
+        app.dependency_overrides.clear()
+    assert demo_response.status_code == 200
+    assert real_response.status_code == 403

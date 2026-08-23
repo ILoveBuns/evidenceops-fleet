@@ -51,6 +51,9 @@ def runtime() -> dict[str, str | bool]:
         else "memory",
         "gemini_ready": bool(getenv("GOOGLE_API_KEY")) or vertex_enabled,
         "approval_guard": "secret" if getenv("EVIDENCEOPS_APPROVAL_TOKEN") else "demo-only",
+        "brief_guard": "public-demo"
+        if getenv("EVIDENCEOPS_PUBLIC_DEMO_BRIEFS", "").lower() == "true"
+        else "secret",
     }
 
 
@@ -104,9 +107,21 @@ def get_case(
 @app.post("/cases/{case_id}/brief", response_model=AgentBrief)
 async def generate_brief(
     case_id: str,
+    request: Request,
     result_store: ResultStore = Depends(get_store),
     service: AdkBriefService = Depends(get_brief_service),
 ) -> AgentBrief:
+    configured_token = getenv("EVIDENCEOPS_BRIEF_TOKEN")
+    supplied_token = request.headers.get("x-brief-token", "")
+    authorized = bool(configured_token) and hmac.compare_digest(
+        supplied_token, configured_token
+    )
+    public_demo = (
+        case_id.startswith("demo-")
+        and getenv("EVIDENCEOPS_PUBLIC_DEMO_BRIEFS", "").lower() == "true"
+    )
+    if not authorized and not public_demo:
+        raise HTTPException(status_code=403, detail="brief authorization required")
     result = result_store.get(case_id)
     if result is None:
         raise HTTPException(status_code=404, detail="case not found")

@@ -30,6 +30,7 @@ observed Google Cloud state and a passing public probe.
 ## Verification command
 
 ```bash
+EVIDENCEOPS_BRIEF_TOKEN='READ_FROM_SECRET_MANAGER' \
 python scripts/verify_public_deployment.py \
   https://YOUR-SERVICE-URL \
   --require-gemini \
