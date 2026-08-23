@@ -66,5 +66,10 @@ class AgentBrief(BaseModel):
 class AgentRegistration(BaseModel):
     name: str
     role: str
+    version: str
+    lifecycle_status: Literal["approved", "experimental", "retired"]
+    framework: str
+    capabilities: list[str]
+    input_boundary: str
     model: str | None = None
     deterministic: bool

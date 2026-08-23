@@ -68,6 +68,11 @@ def test_agent_registry_discloses_gemini_and_deterministic_roles() -> None:
     response = TestClient(app).get("/agents")
     assert response.status_code == 200
     assert {item["model"] for item in response.json()} == {None, "gemini-3.5-flash"}
+    assert {item["lifecycle_status"] for item in response.json()} == {"approved"}
+    assert all(item["version"] == "1.0.0" for item in response.json())
+    assert all(item["capabilities"] for item in response.json())
+    supervisor = next(item for item in response.json() if item["name"] == "supervisor")
+    assert "no raw evidence values" in supervisor["input_boundary"]
 
 
 def test_runtime_discloses_capabilities_without_secret_values(monkeypatch) -> None:
