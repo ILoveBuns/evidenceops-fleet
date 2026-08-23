@@ -31,6 +31,12 @@ The model may summarize and route, but it cannot turn missing evidence into a
 pass. Deterministic checks identify missing fields and source-visible conflicts;
 the verifier binds the result to a canonical digest; the supervisor fails closed
 before publication, signing, payment, or any other bounded external action.
+Ready cases can then receive an idempotent human approval receipt. The actor label
+and note are hashed immediately; only digests and the evidence-bound receipt are stored.
+Without `EVIDENCEOPS_APPROVAL_TOKEN`, only synthetic `demo-*` cases can use the
+console approval button. Real approvals require the token in `X-Approval-Token`;
+production deployments should inject it from Secret Manager and place the service
+behind IAM or an authenticated gateway.
 
 ## Required Google stack
 
@@ -75,7 +81,7 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
 gcloud firestore databases create --location=us-central1
 gcloud run deploy evidenceops-fleet --source . --region us-central1 \
   --allow-unauthenticated --set-env-vars EVIDENCEOPS_STORE=firestore \
-  --set-secrets GOOGLE_API_KEY=gemini-api-key:latest
+  --set-secrets GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest
 ```
 
 Use a dedicated service account with only datastore access. Do not place API

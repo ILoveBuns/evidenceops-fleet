@@ -1,8 +1,18 @@
-from fastapi import Depends, FastAPI, HTTPException
+import hmac
+from os import getenv
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from .dashboard import DASHBOARD_HTML
-from .models import AgentRegistration, EvidenceCaseCreate, EvidenceCaseResult
+from .approval import create_receipt
+from .models import (
+    AgentRegistration,
+    ApprovalCreate,
+    ApprovalReceipt,
+    EvidenceCaseCreate,
+    EvidenceCaseResult,
+)
 from .service import EvidenceFleet
 from .store import ResultStore, configured_store
 
@@ -70,3 +80,36 @@ def get_case(
     if result is None:
         raise HTTPException(status_code=404, detail="case not found")
     return result
+
+
+@app.post(
+    "/cases/{case_id}/approvals", response_model=ApprovalReceipt, status_code=201
+)
+def approve_case(
+    case_id: str,
+    payload: ApprovalCreate,
+    request: Request,
+    result_store: ResultStore = Depends(get_store),
+) -> ApprovalReceipt:
+    configured_token = getenv("EVIDENCEOPS_APPROVAL_TOKEN")
+    supplied_token = request.headers.get("x-approval-token", "")
+    synthetic_demo = case_id.startswith("demo-") and payload.actor_label == (
+        "synthetic-demo-reviewer"
+    )
+    authorized = bool(configured_token) and hmac.compare_digest(
+        supplied_token, configured_token
+    )
+    if not authorized and not synthetic_demo:
+        raise HTTPException(status_code=403, detail="approval authorization required")
+    case = result_store.get(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    try:
+        existing = result_store.get_approval(case_id, payload.approval_id)
+        if existing is not None:
+            candidate = create_receipt(case, payload, created_at=existing.created_at)
+        else:
+            candidate = create_receipt(case, payload)
+        return result_store.save_approval_once(candidate)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error

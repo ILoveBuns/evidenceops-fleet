@@ -37,9 +37,24 @@ class EvidenceCaseResult(BaseModel):
     created_at: datetime
 
 
+class ApprovalCreate(BaseModel):
+    approval_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{7,63}$")
+    actor_label: str = Field(min_length=2, max_length=200)
+    note: str = Field(min_length=5, max_length=500)
+
+
+class ApprovalReceipt(BaseModel):
+    approval_id: str
+    case_id: str
+    evidence_digest: str
+    actor_digest: str
+    note_digest: str
+    receipt_digest: str
+    created_at: datetime
+
+
 class AgentRegistration(BaseModel):
     name: str
     role: str
     model: str | None = None
     deterministic: bool
-
