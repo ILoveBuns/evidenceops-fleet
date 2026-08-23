@@ -94,6 +94,7 @@ def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
     assert "Human approve ready case" in response.text
     assert "Generate Gemini brief" in response.text
     assert "Runtime disclosure" in response.text
+    assert "button:disabled" in response.text
 
 
 def test_ready_case_can_be_approved_without_persisting_raw_identity() -> None:

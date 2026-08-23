@@ -112,7 +112,8 @@ python scripts/verify_public_deployment.py \
 
 Submission preparation lives in [SUBMISSION_DRAFT.md](SUBMISSION_DRAFT.md), the
 under-four-minute recording plan in [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and the
-claim gate in [CLOUD_EVIDENCE.md](CLOUD_EVIDENCE.md).
+claim gate in [CLOUD_EVIDENCE.md](CLOUD_EVIDENCE.md). The ordered screenshot and
+architecture captions are in [MEDIA.md](MEDIA.md).
 
 ## Claims boundary
 
