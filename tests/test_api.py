@@ -69,3 +69,10 @@ def test_agent_registry_discloses_gemini_and_deterministic_roles() -> None:
     assert response.status_code == 200
     assert {item["model"] for item in response.json()} == {None, "gemini-3.5-flash"}
 
+
+def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    assert "SYNTHETIC DEMO" in response.text
+    assert "Missing test receipt" in response.text
+    assert "Conflicting source commits" in response.text

@@ -14,6 +14,8 @@ routine publication into a costly incident.
 
 EvidenceOps Fleet delegates the work to specialized agents:
 
+![EvidenceOps Fleet architecture](assets/architecture.svg)
+
 ```mermaid
 flowchart LR
     UI[FastAPI / ADK client] --> I[Intake agent\nGemini 3.5 Flash]
@@ -49,7 +51,8 @@ python -m venv .venv
 .venv/bin/uvicorn evidenceops_fleet.main:app --reload
 ```
 
-Open `http://localhost:8000/docs`. Local runs use an explicitly in-memory store.
+Open `http://localhost:8000/` for the interactive three-scenario review console,
+or `http://localhost:8000/docs` for the API. Local runs use an explicitly in-memory store.
 To run the Gemini-backed ADK fleet, set `GOOGLE_API_KEY` and use ADK's local
 runner against the `evidenceops_fleet` package.
 
