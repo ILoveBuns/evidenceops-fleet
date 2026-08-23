@@ -40,3 +40,18 @@ python scripts/verify_public_deployment.py \
 
 `deployment-receipt.json` is intentionally ignored by Git. Review it before
 using it as submission evidence.
+
+## Rollback
+
+List ready revisions, then route all traffic to the last verified revision:
+
+```bash
+gcloud run revisions list --service=evidenceops-fleet \
+  --project=YOUR_PROJECT_ID --region=us-central1
+gcloud run services update-traffic evidenceops-fleet \
+  --project=YOUR_PROJECT_ID --region=us-central1 \
+  --to-revisions=LAST_VERIFIED_REVISION=100
+```
+
+Rollback changes serving traffic only. It does not delete Firestore evidence or
+Secret Manager versions.

@@ -21,4 +21,5 @@ jobs:
           cache: pip
       - run: pip install -e '.[test]'
       - run: pytest -q
-
+      - run: bash -n scripts/deploy_google_cloud.sh
+      - run: scripts/deploy_google_cloud.sh example-project --plan

@@ -75,20 +75,21 @@ curl -sS http://localhost:8000/cases \
 
 ## Deploy to Google Cloud
 
-Create a dedicated project with billing safeguards, enable Cloud Run, Cloud
-Build, Artifact Registry and Firestore, then deploy from source:
+Create a dedicated project with billing safeguards. Pre-create three Secret
+Manager secrets (`gemini-api-key`, `approval-token`, and `brief-token`) without
+placing their payloads in shell history or this repository. Then review the
+deployment plan and deploy:
 
 ```bash
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com firestore.googleapis.com
-gcloud firestore databases create --location=us-central1
-gcloud run deploy evidenceops-fleet --source . --region us-central1 \
-  --allow-unauthenticated --set-env-vars EVIDENCEOPS_STORE=firestore \
-  --set-secrets GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest,EVIDENCEOPS_BRIEF_TOKEN=brief-token:latest
+scripts/deploy_google_cloud.sh YOUR_PROJECT_ID --plan
+scripts/deploy_google_cloud.sh YOUR_PROJECT_ID
 ```
 
-Use a dedicated service account with only datastore access. Do not place API
-keys, service-account JSON, cookies, or private evidence in the repository.
+The script creates a dedicated runtime service account, grants only datastore
+user plus per-secret access, caps Cloud Run at two instances, labels the revision
+with the clean Git commit, and leaves public Gemini demo mode disabled. It never
+reads or prints secret payloads. Do not place API keys, service-account JSON,
+cookies, or private evidence in the repository.
 Paid Gemini brief calls require `X-Brief-Token`; the dashboard asks for the
 temporary token and does not persist it. For a time-bounded public judging demo,
 `EVIDENCEOPS_PUBLIC_DEMO_BRIEFS=true` explicitly permits only synthetic
