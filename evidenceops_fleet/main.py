@@ -6,8 +6,10 @@ from fastapi.responses import HTMLResponse
 
 from .dashboard import DASHBOARD_HTML
 from .approval import create_receipt
+from .brief import AdkBriefService
 from .models import (
     AgentRegistration,
+    AgentBrief,
     ApprovalCreate,
     ApprovalReceipt,
     EvidenceCaseCreate,
@@ -19,10 +21,15 @@ from .store import ResultStore, configured_store
 
 app = FastAPI(title="EvidenceOps Fleet", version="0.1.0")
 store = configured_store()
+brief_service = AdkBriefService()
 
 
 def get_store() -> ResultStore:
     return store
+
+
+def get_brief_service() -> AdkBriefService:
+    return brief_service
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -80,6 +87,21 @@ def get_case(
     if result is None:
         raise HTTPException(status_code=404, detail="case not found")
     return result
+
+
+@app.post("/cases/{case_id}/brief", response_model=AgentBrief)
+async def generate_brief(
+    case_id: str,
+    result_store: ResultStore = Depends(get_store),
+    service: AdkBriefService = Depends(get_brief_service),
+) -> AgentBrief:
+    result = result_store.get(case_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    try:
+        return await service.generate(result)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.post(

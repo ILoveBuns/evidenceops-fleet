@@ -1,0 +1,96 @@
+import asyncio
+
+from google.adk.events import Event
+from google.genai import types
+
+from evidenceops_fleet.brief import AdkBriefService
+from evidenceops_fleet.main import app, get_brief_service, get_store
+from evidenceops_fleet.models import EvidenceCaseResult
+from evidenceops_fleet.store import MemoryResultStore
+from fastapi.testclient import TestClient
+
+
+class FakeSessionService:
+    def __init__(self) -> None:
+        self.created = []
+
+    async def create_session(self, **kwargs):
+        self.created.append(kwargs)
+
+
+class FakeRunner:
+    def __init__(self) -> None:
+        self.session_service = FakeSessionService()
+        self.prompt = ""
+
+    async def run_async(self, **kwargs):
+        self.prompt = kwargs["new_message"].parts[0].text
+        yield Event(
+            author="supervisor_agent",
+            content=types.Content(
+                role="model",
+                parts=[types.Part.from_text(text="Keep the case blocked.")],
+            ),
+        )
+
+
+def result() -> EvidenceCaseResult:
+    return EvidenceCaseResult.model_validate(
+        {
+            "case_id": "brief-case-0001",
+            "decision": "blocked",
+            "evidence_digest": "a" * 64,
+            "missing": ["tests"],
+            "conflicts": [],
+            "next_action": "Attach a test receipt",
+            "traces": [
+                {"agent": "policy", "outcome": "blocked", "detail": "missing=1"}
+            ],
+            "created_at": "2026-08-23T00:00:00Z",
+        }
+    )
+
+
+def test_adk_service_extracts_final_response_from_redacted_result(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-only-key")
+    runner = FakeRunner()
+    service = AdkBriefService(runner_factory=lambda: runner)
+    brief = asyncio.run(service.generate(result()))
+    assert brief.brief == "Keep the case blocked."
+    assert brief.source_decision == "blocked"
+    assert brief.source_evidence_digest == "a" * 64
+    assert brief.final_author == "supervisor_agent"
+    assert brief.event_count == 1
+    assert "brief-case-0001" in runner.prompt
+    assert "private evidence value" not in runner.prompt
+    assert runner.session_service.created
+
+
+def test_brief_endpoint_fails_closed_without_credentials(monkeypatch) -> None:
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_GENAI_USE_VERTEXAI", raising=False)
+    result_store = MemoryResultStore()
+    result_store.save_once(result())
+    app.dependency_overrides[get_store] = lambda: result_store
+    try:
+        response = TestClient(app).post("/cases/brief-case-0001/brief")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Gemini credentials are not configured"
+
+
+def test_brief_endpoint_returns_fake_adk_receipt(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-only-key")
+    result_store = MemoryResultStore()
+    result_store.save_once(result())
+    service = AdkBriefService(runner_factory=FakeRunner)
+    app.dependency_overrides[get_store] = lambda: result_store
+    app.dependency_overrides[get_brief_service] = lambda: service
+    try:
+        response = TestClient(app).post("/cases/brief-case-0001/brief")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["model"] == "gemini-3.5-flash"
+    assert response.json()["brief"] == "Keep the case blocked."

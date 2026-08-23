@@ -14,7 +14,7 @@ python -m compileall -q evidenceops_fleet tests
 Expected ADK graph:
 
 ```text
-SequentialAgent evidenceops_fleet
+Workflow evidenceops_fleet
   intake_agent
   policy_agent
   supervisor_agent
@@ -24,4 +24,3 @@ This receipt proves local code behavior and ADK construction. It is not evidence
 of Gemini inference, Firestore persistence, Cloud Run deployment, users, revenue,
 competition eligibility, judging, or prizes. Cloud claims will be added only
 after a deployed revision and public logs are independently verified.
-

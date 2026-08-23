@@ -45,8 +45,11 @@ behind IAM or an authenticated gateway.
 - Cloud infrastructure: Cloud Run and Firestore
 
 The ADK definition is in `evidenceops_fleet/agent.py`. The reproducible HTTP
-control plane is in `evidenceops_fleet/main.py`. Tests do not call a model or
-claim cloud execution.
+control plane is in `evidenceops_fleet/main.py`. `POST /cases/{case_id}/brief`
+runs a real graph-based ADK `Workflow` and gives Gemini only the persisted result,
+never the original evidence values. Tests use a fake runner and do not claim model
+or cloud execution. Every returned brief repeats the authoritative source decision
+and evidence digest; generated prose is advisory and cannot mutate the case.
 
 ## Run locally
 

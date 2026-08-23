@@ -53,6 +53,16 @@ class ApprovalReceipt(BaseModel):
     created_at: datetime
 
 
+class AgentBrief(BaseModel):
+    case_id: str
+    source_decision: Decision
+    source_evidence_digest: str
+    model: str
+    brief: str
+    final_author: str
+    event_count: int
+
+
 class AgentRegistration(BaseModel):
     name: str
     role: str
