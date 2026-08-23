@@ -90,6 +90,19 @@ gcloud run deploy evidenceops-fleet --source . --region us-central1 \
 Use a dedicated service account with only datastore access. Do not place API
 keys, service-account JSON, cookies, or private evidence in the repository.
 
+After deployment, independently replay the public paths before making any cloud
+or model-execution claim:
+
+```bash
+python scripts/verify_public_deployment.py \
+  https://YOUR-SERVICE-URL --require-gemini \
+  --source-commit "$(git rev-parse HEAD)" --output deployment-receipt.json
+```
+
+Submission preparation lives in [SUBMISSION_DRAFT.md](SUBMISSION_DRAFT.md), the
+under-four-minute recording plan in [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and the
+claim gate in [CLOUD_EVIDENCE.md](CLOUD_EVIDENCE.md).
+
 ## Claims boundary
 
 - The repository does not yet claim a live Google Cloud deployment.
