@@ -1,0 +1,23 @@
+{
+  "case_id": "release-demo-0001",
+  "objective": "Verify a release evidence package before publication",
+  "required_evidence": ["commit", "tests", "artifact"],
+  "evidence": [
+    {
+      "name": "commit",
+      "value": "abc123",
+      "source": "https://example.test/commit/abc123"
+    },
+    {
+      "name": "tests",
+      "value": "6 passed",
+      "source": "https://example.test/actions/100"
+    },
+    {
+      "name": "artifact",
+      "value": "sha256:0123456789abcdef",
+      "source": "https://example.test/releases/v1"
+    }
+  ]
+}
+
