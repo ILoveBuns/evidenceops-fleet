@@ -93,6 +93,9 @@ Paid Gemini brief calls require `X-Brief-Token`; the dashboard asks for the
 temporary token and does not persist it. For a time-bounded public judging demo,
 `EVIDENCEOPS_PUBLIC_DEMO_BRIEFS=true` explicitly permits only synthetic
 `demo-*` cases. Disable that flag after judging to prevent unbounded model cost.
+The first successful brief is stored against the immutable case ID and evidence
+digest; subsequent authorized retries return that receipt without another model
+call.
 
 After deployment, independently replay the public paths before making any cloud
 or model-execution claim:

@@ -5,7 +5,7 @@ from google.genai import types
 
 from evidenceops_fleet.brief import AdkBriefService
 from evidenceops_fleet.main import app, get_brief_service, get_store
-from evidenceops_fleet.models import EvidenceCaseResult
+from evidenceops_fleet.models import AgentBrief, EvidenceCaseResult
 from evidenceops_fleet.store import MemoryResultStore
 from fastapi.testclient import TestClient
 
@@ -19,11 +19,14 @@ class FakeSessionService:
 
 
 class FakeRunner:
+    calls = 0
+
     def __init__(self) -> None:
         self.session_service = FakeSessionService()
         self.prompt = ""
 
     async def run_async(self, **kwargs):
+        type(self).calls += 1
         self.prompt = kwargs["new_message"].parts[0].text
         yield Event(
             author="supervisor_agent",
@@ -90,16 +93,24 @@ def test_brief_endpoint_returns_fake_adk_receipt(monkeypatch) -> None:
     result_store = MemoryResultStore()
     result_store.save_once(result())
     service = AdkBriefService(runner_factory=FakeRunner)
+    FakeRunner.calls = 0
     app.dependency_overrides[get_store] = lambda: result_store
     app.dependency_overrides[get_brief_service] = lambda: service
     try:
-        response = TestClient(app).post(
+        client = TestClient(app)
+        response = client.post(
+            "/cases/brief-case-0001/brief",
+            headers={"x-brief-token": "test-brief-secret"},
+        )
+        retry = client.post(
             "/cases/brief-case-0001/brief",
             headers={"x-brief-token": "test-brief-secret"},
         )
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 200
+    assert retry.json() == response.json()
+    assert FakeRunner.calls == 1
     assert response.json()["model"] == "gemini-3.5-flash"
     assert response.json()["brief"] == "Keep the case blocked."
 
@@ -136,3 +147,24 @@ def test_explicit_public_demo_allows_only_demo_case(monkeypatch) -> None:
         app.dependency_overrides.clear()
     assert demo_response.status_code == 200
     assert real_response.status_code == 403
+
+
+def test_memory_store_rejects_brief_for_different_evidence() -> None:
+    result_store = MemoryResultStore()
+    first = AgentBrief(
+        case_id="brief-case-0001",
+        source_decision="blocked",
+        source_evidence_digest="a" * 64,
+        model="gemini-3.5-flash",
+        brief="Keep the case blocked.",
+        final_author="supervisor_agent",
+        event_count=1,
+    )
+    changed = first.model_copy(update={"source_evidence_digest": "b" * 64})
+    assert result_store.save_brief_once(first) == first
+    try:
+        result_store.save_brief_once(changed)
+    except ValueError as error:
+        assert str(error) == "case brief binds different source evidence"
+    else:
+        raise AssertionError("changed evidence must not reuse a cached brief")

@@ -125,10 +125,15 @@ async def generate_brief(
     result = result_store.get(case_id)
     if result is None:
         raise HTTPException(status_code=404, detail="case not found")
+    existing = result_store.get_brief(case_id)
+    if existing is not None:
+        return existing
     try:
-        return await service.generate(result)
+        return result_store.save_brief_once(await service.generate(result))
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.post(
