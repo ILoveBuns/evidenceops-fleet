@@ -107,6 +107,16 @@ if ! gcloud iam service-accounts describe "$service_account" \
     --project "$project_id"
 fi
 
+if [[ "$active_account" == *".gserviceaccount.com" ]]; then
+  deployer_member="serviceAccount:${active_account}"
+else
+  deployer_member="user:${active_account}"
+fi
+gcloud iam service-accounts add-iam-policy-binding "$service_account" \
+  --project "$project_id" \
+  --member="$deployer_member" \
+  --role='roles/iam.serviceAccountUser' >/dev/null
+
 gcloud projects add-iam-policy-binding "$project_id" \
   --member="serviceAccount:${service_account}" \
   --role='roles/datastore.user' \

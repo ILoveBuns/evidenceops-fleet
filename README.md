@@ -86,10 +86,12 @@ scripts/deploy_google_cloud.sh YOUR_PROJECT_ID
 ```
 
 The script creates a dedicated runtime service account, grants only datastore
-user plus per-secret access, caps Cloud Run at two instances, labels the revision
-with the clean Git commit, and leaves public Gemini demo mode disabled. It never
-reads or prints secret payloads. Do not place API keys, service-account JSON,
-cookies, or private evidence in the repository.
+user plus per-secret access, and grants the active deployer Service Account User
+only on that dedicated identity as required to attach it to Cloud Run. It caps
+Cloud Run at two instances, labels the revision with the clean Git commit, and
+leaves public Gemini demo mode disabled. It never reads or prints secret
+payloads. Do not place API keys, service-account JSON, cookies, or private
+evidence in the repository.
 Paid Gemini brief calls require `X-Brief-Token`; the dashboard asks for the
 temporary token and does not persist it. For a time-bounded public judging demo,
 `EVIDENCEOPS_PUBLIC_DEMO_BRIEFS=true` explicitly permits only synthetic
