@@ -70,6 +70,20 @@ def test_agent_registry_discloses_gemini_and_deterministic_roles() -> None:
     assert {item["model"] for item in response.json()} == {None, "gemini-3.5-flash"}
 
 
+def test_runtime_discloses_capabilities_without_secret_values(monkeypatch) -> None:
+    monkeypatch.setenv("GOOGLE_API_KEY", "private-gemini-key")
+    monkeypatch.setenv("EVIDENCEOPS_APPROVAL_TOKEN", "private-approval-token")
+    response = TestClient(app).get("/runtime")
+    assert response.status_code == 200
+    assert response.json() == {
+        "store": "memory",
+        "gemini_ready": True,
+        "approval_guard": "secret",
+    }
+    assert "private-gemini-key" not in response.text
+    assert "private-approval-token" not in response.text
+
+
 def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
     response = TestClient(app).get("/")
     assert response.status_code == 200
@@ -77,6 +91,8 @@ def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
     assert "Missing test receipt" in response.text
     assert "Conflicting source commits" in response.text
     assert "Human approve ready case" in response.text
+    assert "Generate Gemini brief" in response.text
+    assert "Runtime disclosure" in response.text
 
 
 def test_ready_case_can_be_approved_without_persisting_raw_identity() -> None:

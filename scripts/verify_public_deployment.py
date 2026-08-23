@@ -77,6 +77,17 @@ def verify(base_url: str, require_gemini: bool, source_commit: str | None):
         {"names": sorted(names), "models": sorted(str(model) for model in models)},
     )
 
+    status, runtime = request_json(base_url, "/runtime")
+    check(
+        "runtime disclosure",
+        status == 200
+        and set(runtime) == {"store", "gemini_ready", "approval_guard"}
+        and runtime.get("store") in {"memory", "firestore"}
+        and runtime.get("approval_guard") in {"demo-only", "secret"}
+        and (not require_gemini or runtime.get("gemini_ready") is True),
+        runtime,
+    )
+
     status, dashboard = request_text(base_url, "/")
     check(
         "dashboard disclosure",

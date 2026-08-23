@@ -42,6 +42,18 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "evidenceops-fleet"}
 
 
+@app.get("/runtime")
+def runtime() -> dict[str, str | bool]:
+    vertex_enabled = getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() == "true"
+    return {
+        "store": "firestore"
+        if getenv("EVIDENCEOPS_STORE") == "firestore"
+        else "memory",
+        "gemini_ready": bool(getenv("GOOGLE_API_KEY")) or vertex_enabled,
+        "approval_guard": "secret" if getenv("EVIDENCEOPS_APPROVAL_TOKEN") else "demo-only",
+    }
+
+
 @app.get("/agents", response_model=list[AgentRegistration])
 def agents() -> list[AgentRegistration]:
     return [
