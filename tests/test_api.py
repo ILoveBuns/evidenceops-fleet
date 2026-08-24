@@ -71,13 +71,58 @@ def test_agent_registry_discloses_gemini_and_deterministic_roles() -> None:
     assert {item["lifecycle_status"] for item in response.json()} == {"approved"}
     assert all(item["version"] == "1.0.0" for item in response.json())
     assert all(item["capabilities"] for item in response.json())
+    assert all(item["owner_department"] for item in response.json())
+    assert all("internal-audit" in item["approved_consumers"] for item in response.json())
+    assert all(item["data_classifications"] for item in response.json())
+    assert all(item["allowed_regions"] == ["us-central1"] for item in response.json())
     supervisor = next(item for item in response.json() if item["name"] == "supervisor")
     assert "no raw evidence values" in supervisor["input_boundary"]
+
+
+def test_agent_catalog_supports_cross_department_discovery() -> None:
+    client = TestClient(app)
+    audit_catalog = client.get("/agents", params={"department": "internal-audit"})
+    digest_binder = client.get(
+        "/agents", params={"capability": "bind-sha256-digest"}
+    )
+    unavailable = client.get(
+        "/agents", params={"department": "marketing", "capability": "send-email"}
+    )
+
+    assert audit_catalog.status_code == 200
+    assert {agent["name"] for agent in audit_catalog.json()} == {
+        "intake",
+        "policy",
+        "verifier",
+        "supervisor",
+    }
+    assert [agent["name"] for agent in digest_binder.json()] == ["verifier"]
+    assert unavailable.json() == []
+
+
+def test_workflow_discloses_real_delegation_and_authority_boundary() -> None:
+    response = TestClient(app).get("/workflow")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["framework"] == "google-adk"
+    assert body["edges"] == [
+        ["START", "intake_agent"],
+        ["intake_agent", "policy_agent"],
+        ["policy_agent", "supervisor_agent"],
+    ]
+    assert {node["name"]: node["kind"] for node in body["nodes"]} == {
+        "intake_agent": "llm-agent",
+        "policy_agent": "llm-agent",
+        "supervisor_agent": "llm-agent",
+        "deterministic_verifier": "deterministic-authority",
+    }
+    assert "cannot mutate" in body["decision_authority"]
 
 
 def test_runtime_discloses_capabilities_without_secret_values(monkeypatch) -> None:
     monkeypatch.setenv("GOOGLE_API_KEY", "private-gemini-key")
     monkeypatch.setenv("EVIDENCEOPS_APPROVAL_TOKEN", "private-approval-token")
+    monkeypatch.setenv("EVIDENCEOPS_TASK_TOKEN", "private-task-token")
     response = TestClient(app).get("/runtime")
     assert response.status_code == 200
     assert response.json() == {
@@ -85,9 +130,23 @@ def test_runtime_discloses_capabilities_without_secret_values(monkeypatch) -> No
         "gemini_ready": True,
         "approval_guard": "secret",
         "brief_guard": "secret",
+        "worker_guard": "secret",
+        "operation_runtime": "local-background",
     }
     assert "private-gemini-key" not in response.text
     assert "private-approval-token" not in response.text
+    assert "private-task-token" not in response.text
+
+
+def test_runtime_discloses_misconfigured_firestore_queue(monkeypatch) -> None:
+    monkeypatch.setenv("EVIDENCEOPS_STORE", "firestore")
+    monkeypatch.delenv("EVIDENCEOPS_TASKS_QUEUE", raising=False)
+
+    response = TestClient(app).get("/runtime")
+
+    assert response.status_code == 200
+    assert response.json()["store"] == "firestore"
+    assert response.json()["operation_runtime"] == "misconfigured"
 
 
 def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
@@ -100,6 +159,8 @@ def test_dashboard_exposes_synthetic_label_and_three_failure_paths() -> None:
     assert "Generate Gemini brief" in response.text
     assert "Runtime disclosure" in response.text
     assert "button:disabled" in response.text
+    assert "fetch('/operations'" in response.text
+    assert "waitForOperation" in response.text
 
 
 def test_ready_case_can_be_approved_without_persisting_raw_identity() -> None:
@@ -124,6 +185,40 @@ def test_ready_case_can_be_approved_without_persisting_raw_identity() -> None:
     serialized = first.text
     assert "synthetic-demo-reviewer" not in serialized
     assert "Reviewed commit" not in serialized
+
+
+def test_case_memory_snapshot_is_ordered_and_redacted() -> None:
+    result_store = MemoryResultStore()
+    app.dependency_overrides[get_store] = lambda: result_store
+    try:
+        client = TestClient(app)
+        case = case_payload()
+        case["case_id"] = "demo-memory-0001"
+        client.post("/operations", json=case)
+        client.post(
+            "/cases/demo-memory-0001/approvals",
+            json={
+                "approval_id": "approval-memory-1",
+                "actor_label": "synthetic-demo-reviewer",
+                "note": "Reviewed private release evidence for memory snapshot",
+            },
+        )
+        memory = client.get("/cases/demo-memory-0001/memory")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert memory.status_code == 200
+    assert memory.json()["schema_name"] == "evidenceops-case-memory/v1"
+    assert memory.json()["retention_policy"] == "no-ttl-configured"
+    assert memory.json()["raw_evidence_included"] is False
+    assert [event["event_type"] for event in memory.json()["events"]] == [
+        "case",
+        "operation",
+        "approval",
+    ]
+    assert "abc123" not in memory.text
+    assert "synthetic-demo-reviewer" not in memory.text
+    assert "Reviewed private" not in memory.text
 
 
 def test_blocked_case_cannot_be_approved() -> None:

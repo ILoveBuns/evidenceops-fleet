@@ -7,8 +7,8 @@ response into the recording or imply that synthetic data is customer evidence.
 
 > Small release and compliance teams carry enterprise-sized risk. Before an
 > irreversible action, they must prove that commits, tests, artifacts, and human
-> review all agree. EvidenceOps Fleet gives that team a fail-closed evidence
-> control plane instead of another chatbot.
+> review all agree. EvidenceOps Fleet autonomously moves observed GitHub CI to
+> evidence-bound approval, with deterministic vetoes instead of another chatbot.
 
 Show the title, `SYNTHETIC DEMO` label, and the three scenarios.
 
@@ -19,22 +19,33 @@ Show `assets/architecture.svg`.
 > Gemini 3.5 Flash agents handle intake, policy explanation, and supervision
 > through a Google ADK workflow. But they cannot authorize a release. A
 > deterministic verifier owns missing and conflict checks and binds the outcome
-> to a canonical SHA-256 digest. Cloud Run hosts the service and Firestore stores
-> cases and approval receipts transactionally.
+> to a canonical SHA-256 digest. Cloud Run first writes an operation receipt to
+> Firestore, then Cloud Tasks dispatches a deterministic per-attempt job. A
+> dispatch retry deduplicates safely, while a failed execution can advance to a
+> new attempt ID instead of being hidden by task-name retention.
+> A Firestore transaction claims a five-minute execution lease, preventing
+> overlapping delivery while allowing a crashed worker to be reclaimed.
+> The queue itself is cost-bounded to five attempts within fifteen minutes.
 
-## 0:55–1:35 — Complete evidence
+## 0:55–1:35 — Autonomous GitHub CI evidence
 
-Open the hosted console and run **Complete release evidence**.
+Call `POST /integrations/github/operations` with the public repository and the
+exact commit shown in GitHub Actions, then show the operation polling to ready.
 
-> This request has source-attributed commit, test, and artifact receipts. The
-> decision is ready, the digest makes the evidence set reproducible, and the
-> trace shows which specialized stage produced each result.
+> The fixed-host adapter retrieved the commit and two successful checks; no one
+> copied CI text into the form. The operation first shows queued, then reaches
+> ready. Its input digest makes dispatch reproducible, while the final receipt
+> exposes one execution attempt and a cleared lease. The operation endpoint does
+> not return the fetched evidence values.
 
 Point to the decision, digest, and traces. Create the synthetic human approval.
 
 > Approval is explicitly human-bound and idempotent. The raw reviewer label and
 > note are hashed immediately; the receipt remains bound to this exact evidence
 > digest.
+
+Open `/cases/{case_id}/memory` and point to the ordered case, operation, and
+approval events, `raw_evidence_included=false`, and the explicit retention policy.
 
 ## 1:35–2:15 — Fail closed twice
 
@@ -57,21 +68,31 @@ Generate a brief for the ready case and show the response.
 > conflicts, and trace summaries—never the original evidence values. Its prose
 > is advisory, while the source decision and digest remain authoritative.
 
-Show `/agents` briefly, then show the brief's `source_decision`,
+Open `/workflow`, then filter `/agents?department=internal-audit` and
+`/agents?capability=bind-sha256-digest`. The workflow proves three ADK LLM agents
+delegate the redacted brief while a deterministic authority remains outside
+model control. The catalog shows four approved specialists; the capability
+filter returns only the verifier with its owner, data class, and region. Then
+show the brief's `source_decision`,
 `source_evidence_digest`, model, and final author.
 
 ## 2:55–3:25 — Production evidence
 
-Show the Cloud Run service and revision, then the Firestore records or a
-redacted query result. Show the successful JSON output from:
+Show the Cloud Run service and revision, the Cloud Tasks queue, then the
+Firestore operation and case records or a redacted query result. Show the
+successful JSON output from:
 
 ```bash
 python scripts/verify_public_deployment.py \
-  https://YOUR-SERVICE-URL --require-gemini
+  https://YOUR-SERVICE-URL --require-gemini \
+  --source-commit "$(git rev-parse HEAD)" \
+  --github-repository ILoveBuns/evidenceops-fleet \
+  --github-commit "$(git rev-parse HEAD)"
 ```
 
-> The public verifier independently replays ready, missing, conflict, approval,
-> and Gemini paths. CI runs the test suite on Python 3.11 and 3.12. Secrets are
+> The public verifier independently replays durable asynchronous execution,
+> autonomous GitHub evidence collection, ready, missing, conflict, approval,
+> memory, and Gemini paths. CI runs the test suite on Python 3.11 and 3.12. Secrets are
 > injected at deployment and never enter the repository.
 
 ## 3:25–3:40 — Close
@@ -86,5 +107,6 @@ python scripts/verify_public_deployment.py \
 - Browser zoom keeps decision, digest, and traces readable.
 - Gemini generation succeeds live during the recording.
 - Cloud Run revision and Firestore evidence are visible but secrets are not.
-- Video is public or unlisted and playable without authentication.
+- Cloud Tasks queue and one terminal operation receipt are visible.
+- Video is public, not unlisted, and playable without authentication.
 - Final duration is under four minutes.

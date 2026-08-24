@@ -1,9 +1,11 @@
 # EvidenceOps Fleet
 
-EvidenceOps Fleet is a policy-gated multi-agent system for the people who must
-prove that a release, application, or audit package is complete before an
-irreversible external action. It is a new project created during the All Things
-Agentic Hackathon submission period for the **Fortified Enterprise Fleet** track.
+EvidenceOps Fleet is an autonomous GitHub-to-approval control plane for the tiny
+release and compliance teams that carry enterprise-sized risk. It collects an
+observed commit and CI state, applies deterministic vetoes, and binds human
+approval to a durable digest without persisting raw evidence. It is a new project
+created during the All Things Agentic Hackathon submission period for the
+**Fortified Enterprise Fleet** track.
 
 ## The unlikely hero
 
@@ -14,20 +16,38 @@ routine publication into a costly incident.
 
 EvidenceOps Fleet delegates the work to specialized agents:
 
+`GET /agents` is a governed cross-department catalog, not only a name list. Each
+registration publishes version and lifecycle, owning department, approved
+consumer departments, capabilities, input boundary, data classifications, and
+allowed region. Judges can discover approved agents with `department` and
+`capability` filters without exposing credentials or runtime state.
+
+`GET /workflow` discloses the actual delegation graph: three Google ADK LLM
+agents produce a redacted post-decision brief, while the deterministic verifier
+remains outside model authority and owns the decision and evidence digest.
+
 ![EvidenceOps Fleet architecture](assets/architecture.svg)
 
 ```mermaid
 flowchart LR
-    UI[FastAPI / ADK client] --> I[Intake agent\nGemini 3.5 Flash]
+    GH[GitHub CI adapter] --> UI
+    UI[FastAPI /operations] --> O[(Firestore\noperation receipt)]
+    UI --> Q[Cloud Tasks\ndurable queue]
+    Q --> I[Intake agent\nGemini 3.5 Flash]
     I --> P[Policy agent\nGemini 3.5 + deterministic tool]
     P --> V[Verifier\ncanonical SHA-256]
     V --> S[Supervisor agent\nGemini 3.5 Flash]
     S --> H{Human approval}
-    S --> F[(Firestore)]
+    S --> F[(Firestore\noutcome receipt)]
     UI -. deployed on .-> C[Google Cloud Run]
 ```
 
-The model may summarize and route, but it cannot turn missing evidence into a
+The API first binds each request to an immutable operation digest, then uses a
+deterministic per-attempt Cloud Tasks ID so dispatch can be retried without
+duplicating one attempt, while a failed operation can advance to a new task ID.
+A transactional five-minute execution lease prevents
+overlapping at-least-once deliveries while allowing a crashed worker to be
+reclaimed safely. The model may summarize and route, but it cannot turn missing evidence into a
 pass. Deterministic checks identify missing fields and source-visible conflicts;
 the verifier binds the result to a canonical digest; the supervisor fails closed
 before publication, signing, payment, or any other bounded external action.
@@ -50,6 +70,27 @@ runs a real graph-based ADK `Workflow` and gives Gemini only the persisted resul
 never the original evidence values. Tests use a fake runner and do not claim model
 or cloud execution. Every returned brief repeats the authoritative source decision
 and evidence digest; generated prose is advisory and cannot mutate the case.
+
+`POST /operations` adds a durable asynchronous path. In Google Cloud it writes
+an evidence-bound operation receipt to Firestore and dispatches a deterministic,
+idempotent Cloud Tasks job. The private worker validates a Secret Manager-backed
+task token whenever that secret is configured—even before queue configuration
+is complete—and validates the original input digest before execution. Local runs use
+FastAPI background tasks while preserving the same operation contract.
+Firestore mode never silently falls back to an in-process background task: if
+Cloud Tasks configuration is incomplete, operation creation returns `503`
+before persisting anything and `/runtime` reports `misconfigured`.
+
+`POST /integrations/github/operations` removes manual CI evidence copying. A
+fixed-host adapter reads one validated `owner/repository` commit and its GitHub
+check runs, emits only the observed SHA, successful-check summary, and source
+URLs, then enters the same durable operation contract. Any absent, pending, or
+failed check omits the required `tests` evidence so policy blocks the case.
+`EVIDENCEOPS_GITHUB_TOKEN` is optional for higher API limits or private repos;
+its value is never persisted or returned.
+The deployment reconciles the queue to five attempts within a 15-minute retry
+window, with bounded exponential backoff and two concurrent dispatches. This
+prevents an unavailable worker from creating an open-ended cost or retry loop.
 
 ## Run locally
 
@@ -75,18 +116,27 @@ curl -sS http://localhost:8000/cases \
 
 ## Deploy to Google Cloud
 
-Create a dedicated project with billing safeguards. Pre-create three Secret
-Manager secrets (`gemini-api-key`, `approval-token`, and `brief-token`) without
-placing their payloads in shell history or this repository. Then review the
-deployment plan and deploy:
+Create a dedicated project with billing safeguards. Pre-create four Secret
+Manager secrets (`gemini-api-key`, `approval-token`, `brief-token`, and
+`task-token`) without
+placing their payloads in shell history or this repository. First run the
+read-only preflight, then review the deployment plan and deploy:
 
 ```bash
+python scripts/preflight_google_cloud.py YOUR_PROJECT_ID \
+  --output cloud-preflight.json
 scripts/deploy_google_cloud.sh YOUR_PROJECT_ID --plan
 scripts/deploy_google_cloud.sh YOUR_PROJECT_ID
 ```
 
-The script creates a dedicated runtime service account, grants only datastore
-user plus per-secret access, and grants the active deployer Service Account User
+The preflight checks the CLI, active identity, project access, billing, and
+secret names without enabling services, creating resources, reading secret
+payloads, or printing the active account. API enablement is reported separately
+because the deployment script performs that step.
+
+The script creates a dedicated runtime service account and a rate-limited Cloud
+Tasks queue, grants only datastore user, task enqueuer, and per-secret access,
+and grants the active deployer Service Account User
 only on that dedicated identity as required to attach it to Cloud Run. It caps
 Cloud Run at two instances, labels the revision with the clean Git commit, and
 leaves public Gemini demo mode disabled. It never reads or prints secret
@@ -100,15 +150,41 @@ The first successful brief is stored against the immutable case ID and evidence
 digest; subsequent authorized retries return that receipt without another model
 call.
 
+`GET /cases/{case_id}/memory` reconstructs a deterministic cross-session context
+snapshot from the case, latest durable operation, approval receipts, and cached
+brief. Events contain only IDs, timestamps, statuses, and digests; raw evidence,
+reviewer labels, and notes are excluded. Firestore deployments configure no TTL,
+so the snapshot remains available across weeks until an operator intentionally
+adds a retention policy. `retention_policy=no-ttl-configured` is disclosure, not
+a promise that data can never be deleted.
+
 After deployment, independently replay the public paths before making any cloud
-or model-execution claim:
+or model-execution claim. The verifier also checks the redacted cross-session
+memory snapshot and writes it into the local deployment receipt:
 
 ```bash
 EVIDENCEOPS_BRIEF_TOKEN='READ_FROM_SECRET_MANAGER' \
 python scripts/verify_public_deployment.py \
   https://YOUR-SERVICE-URL --require-gemini \
-  --source-commit "$(git rev-parse HEAD)" --output deployment-receipt.json
+  --source-commit "$(git rev-parse HEAD)" \
+  --github-repository ILoveBuns/evidenceops-fleet \
+  --github-commit "$(git rev-parse HEAD)" \
+  --output deployment-receipt.json
 ```
+
+Before submission, run the fail-closed checklist:
+
+```bash
+python scripts/audit_submission_readiness.py \
+  --output submission-readiness.json
+```
+
+It exits nonzero until the public video URL, observed Google Cloud receipt, and
+clean source commit matching `origin/main` are all present. The JSON output is a
+gate report, not evidence that a missing external step was completed. It also
+reports optional contribution readiness separately; missing bonus items never
+hide or replace a required submission blocker. Publication-ready article and
+social drafts live in [BONUS_DRAFTS.md](BONUS_DRAFTS.md).
 
 Submission preparation lives in [SUBMISSION_DRAFT.md](SUBMISSION_DRAFT.md), the
 under-four-minute recording plan in [DEMO_SCRIPT.md](DEMO_SCRIPT.md), and the

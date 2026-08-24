@@ -36,10 +36,10 @@ reviewer identity, or revenue claims.
 ## Integrity receipt
 
 ```text
-5dfa72b04a05f3eed4d41948b0c3d146c3fad5a03aa629f7c52a9632a3a2e73f  evidenceops-approved.png
-4d838f50f232898ae270b4c32efb1713363690f92411ff54ca19c8b7681953ea  evidenceops-conflict.png
-144836041d5a01b1708e866ae07c2212e7046b1ccea27f4cf80e6e19368b87ae  evidenceops-missing.png
-8bf181bacd0252ad8137ba47286262dcc15d7505901001f6b1ced8f4c0e29930  evidenceops-ready.png
+abfb467e898c017b4fe28ca6a49c406b4b9d69ed14c2290060c85dac43a64d53  evidenceops-approved.png
+dc8b5ac43cdb1b2d12cf6a34e4b4786c6529dbb516560034667d8f4b66bb7c03  evidenceops-conflict.png
+79e3713aadb56200f7306e54d9cc997528b4779dda1bee3a671046792bdd9823  evidenceops-missing.png
+0a76a366dfcdec90a594cc47d628dd9d6b6521ced369d02fbc99c0f7523aecf9  evidenceops-ready.png
 ```
 
 These images prove local deterministic behavior only. They do not prove Cloud

@@ -10,7 +10,7 @@ Usage: scripts/deploy_google_cloud.sh PROJECT_ID [--region REGION]
        [--firestore-location LOCATION] [--plan]
 
 Requires pre-created Secret Manager secrets:
-  gemini-api-key, approval-token, brief-token
+  gemini-api-key, approval-token, brief-token, task-token
 
 The script never reads or prints secret payloads.
 EOF
@@ -53,8 +53,10 @@ while (($#)); do
 done
 
 service="evidenceops-fleet"
+queue_name="evidenceops-fleet"
 service_account_name="evidenceops-fleet-runtime"
 service_account="${service_account_name}@${project_id}.iam.gserviceaccount.com"
+queue_path="projects/${project_id}/locations/${region}/queues/${queue_name}"
 source_commit="$(git rev-parse HEAD)"
 
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -68,6 +70,8 @@ EvidenceOps Fleet deployment plan
   region:              $region
   Firestore location:  $firestore_location
   service account:     $service_account
+  task queue:          $queue_path
+  task retry policy:   5 attempts / 15 minutes
   source commit:       $source_commit
   public dashboard:    enabled
   paid brief endpoint: secret-protected
@@ -98,6 +102,7 @@ gcloud services enable \
   artifactregistry.googleapis.com \
   firestore.googleapis.com \
   secretmanager.googleapis.com \
+  cloudtasks.googleapis.com \
   --project "$project_id"
 
 if ! gcloud iam service-accounts describe "$service_account" \
@@ -122,7 +127,12 @@ gcloud projects add-iam-policy-binding "$project_id" \
   --role='roles/datastore.user' \
   --condition=None >/dev/null
 
-for secret in gemini-api-key approval-token brief-token; do
+gcloud projects add-iam-policy-binding "$project_id" \
+  --member="serviceAccount:${service_account}" \
+  --role='roles/cloudtasks.enqueuer' \
+  --condition=None >/dev/null
+
+for secret in gemini-api-key approval-token brief-token task-token; do
   if ! gcloud secrets describe "$secret" --project "$project_id" >/dev/null 2>&1; then
     echo "Required secret is missing: $secret" >&2
     echo "Create it and add a version without placing its value in this repository." >&2
@@ -142,6 +152,31 @@ if ! gcloud firestore databases describe --database='(default)' \
     --project "$project_id"
 fi
 
+if ! gcloud tasks queues describe "$queue_name" \
+  --location "$region" --project "$project_id" >/dev/null 2>&1; then
+  gcloud tasks queues create "$queue_name" \
+    --location "$region" \
+    --max-dispatches-per-second=5 \
+    --max-concurrent-dispatches=2 \
+    --max-attempts=5 \
+    --max-retry-duration=900s \
+    --min-backoff=5s \
+    --max-backoff=60s \
+    --max-doublings=3 \
+    --project "$project_id"
+fi
+
+gcloud tasks queues update "$queue_name" \
+  --location "$region" \
+  --max-dispatches-per-second=5 \
+  --max-concurrent-dispatches=2 \
+  --max-attempts=5 \
+  --max-retry-duration=900s \
+  --min-backoff=5s \
+  --max-backoff=60s \
+  --max-doublings=3 \
+  --project "$project_id" >/dev/null
+
 gcloud run deploy "$service" \
   --source . \
   --project "$project_id" \
@@ -149,7 +184,7 @@ gcloud run deploy "$service" \
   --service-account "$service_account" \
   --allow-unauthenticated \
   --set-env-vars='EVIDENCEOPS_STORE=firestore,EVIDENCEOPS_PUBLIC_DEMO_BRIEFS=false' \
-  --set-secrets='GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest,EVIDENCEOPS_BRIEF_TOKEN=brief-token:latest' \
+  --set-secrets='GOOGLE_API_KEY=gemini-api-key:latest,EVIDENCEOPS_APPROVAL_TOKEN=approval-token:latest,EVIDENCEOPS_BRIEF_TOKEN=brief-token:latest,EVIDENCEOPS_TASK_TOKEN=task-token:latest' \
   --min-instances=0 \
   --max-instances=2 \
   --concurrency=20 \
@@ -160,6 +195,12 @@ gcloud run deploy "$service" \
 
 service_url="$(gcloud run services describe "$service" \
   --project "$project_id" --region "$region" --format='value(status.url)')"
+
+gcloud run services update "$service" \
+  --project "$project_id" \
+  --region "$region" \
+  --update-env-vars="EVIDENCEOPS_TASKS_QUEUE=${queue_path},EVIDENCEOPS_WORKER_URL=${service_url}" >/dev/null
+
 revision="$(gcloud run services describe "$service" \
   --project "$project_id" --region "$region" \
   --format='value(status.latestReadyRevisionName)')"

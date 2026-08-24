@@ -16,15 +16,16 @@ https://allthingsagentichackathon.devpost.com/
 | Google Cloud infrastructure | Firestore adapter and least-privilege Cloud Run deployment | Actual deployment proof still required |
 | Approximately four-minute demo | `DEMO_SCRIPT.md` targets 3:40 | Recording still required |
 | Architecture diagram | `assets/architecture.svg` | Complete |
-| Reproducible setup | README, container, deploy script, public verifier | Complete locally; cloud receipt pending |
+| Reproducible setup | README, container, deploy script, public verifier, fail-closed submission audit | Complete locally; video/cloud/published commit gates pending |
 
 ## Fortified Enterprise Fleet mapping
 
 | Platform concern | Current evidence | Status |
 |---|---|---|
-| Discovery and lifecycle | `/agents` publishes version, lifecycle status, framework, capabilities, and input boundary | Implemented |
-| Runtime | Request-scoped control plane with fail-closed execution | **Gap: durable asynchronous operation queue** |
-| Secure long-term context | Firestore stores immutable case, approval, and brief receipts | Implemented; live proof pending |
+| Discovery and lifecycle | `/agents` publishes version/lifecycle, owner, approved consumers, capability, data classification, region, and supports cross-department discovery | Implemented and tested |
+| Runtime | Firestore-bound operations, deterministic per-attempt Cloud Tasks dispatch, failed-attempt recovery, transactional execution leases, and a token-guarded worker | Implemented and tested locally; live proof pending |
+| Autonomous action | Fixed-host GitHub adapter retrieves commit and CI evidence, then dispatches the same durable operation | Implemented and tested locally; live public-repo proof pending |
+| Secure long-term context | `/cases/{id}/memory` reconstructs redacted cross-session context from Firestore receipts; no TTL is disclosed | Implemented and tested; multi-week live proof pending |
 | Agent identity and gateway | Dedicated Cloud Run service identity plus separate approval/brief guards | Implemented; live proof pending |
 | Model/input guardrails | Raw evidence excluded from Gemini; deterministic policy owns authority | Implemented; Google Model Armor not claimed |
 | Telemetry | OpenTelemetry spans omit evidence values | Implemented; live trace proof pending |
